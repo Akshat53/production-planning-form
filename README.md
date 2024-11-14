@@ -190,7 +190,7 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## 📞 Support
 
-For support, email your-email@example.com or create an issue in the GitHub repository.
+For support, email work.iamakshat@gmail.com or create an issue in the GitHub repository.
 
 ## 🙏 Acknowledgments
 
