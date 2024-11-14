@@ -4,8 +4,8 @@ A web application for managing production plans and fabric requirements. This ap
 
 ## 🚀 Live Demo
 
-- [Live Demo](your-netlify-url-here)
-- [GitHub Repository](your-github-repo-url-here)
+- [Live Demo](https://production-planning-form.vercel.app/)
+- [GitHub Repository](https://github.com/Akshat53/production-planning-form.git)
 
 ## 📁 Project Structure
 
