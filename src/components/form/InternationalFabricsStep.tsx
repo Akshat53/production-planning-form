@@ -5,6 +5,7 @@ import { FormData } from "@/types/form"
 import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { ACCESSORIES,TRIMS } from "@/lib/constants"
 import {
   Select,
   SelectContent,
@@ -17,6 +18,7 @@ interface InternationalFabricsStepProps {
   formData: FormData
   updateFormData: (data: Partial<FormData>) => void
 }
+
 
 export function InternationalFabricsStep({
   formData,
@@ -86,6 +88,45 @@ export function InternationalFabricsStep({
               {formData.fabrics.map((fabric) => (
                 <SelectItem key={fabric.name} value={fabric.name}>
                   {fabric.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Choose Trims</Label>
+          <Select
+            value={formData.trims}
+            onValueChange={(value) => updateFormData({ trims: value })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select Trims" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              {TRIMS.map((trim) => (
+                <SelectItem key={trim} value={trim}>
+                  {trim}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Choose Accessories</Label>
+          <Select
+            value={formData.accessories}
+            onValueChange={(value) => updateFormData({ accessories: value })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select Accessories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              {ACCESSORIES.map((access) => (
+                <SelectItem key={access} value={access}>
+                  {access}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -39,6 +39,15 @@ export const STAGES = [
 ]
 
 export const TRIMS = [
+  'WASHCARE LABEL',
+  'PRICE TAG',
+  'SIZE LABEL',
+  'BUTTON',
+  'ZIP',
+  'HOOK'
+]
+
+export const ACCESSORIES = [
   'LABEL COPPER',
   'TAG',
   'STICKER',

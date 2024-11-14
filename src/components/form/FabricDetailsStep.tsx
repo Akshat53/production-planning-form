@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FormData, FabricDetails } from "@/types/form"
+import { FormData, FabricDetails, ColorQuantity } from "@/types/form"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -15,17 +15,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { X, Plus, AlertCircle } from "lucide-react"
-import { FABRICS, PROCESSES } from "@/lib/constants"
-import { toast } from "sonner"
-import { Badge } from "@/components/ui/badge"
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { validateFabricDetails, validateQuantity } from '@/lib/validation'
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { X, Plus, Trash } from "lucide-react"
+import { FABRICS, PROCESSES, STAGES } from "@/lib/constants"
+import { toast } from "sonner"
 
 interface FabricDetailsStepProps {
   formData: FormData
@@ -34,7 +32,7 @@ interface FabricDetailsStepProps {
 
 export function FabricDetailsStep({ formData, updateFormData }: FabricDetailsStepProps) {
   const [availableFabrics, setAvailableFabrics] = useState<string[]>([])
-  const [validationErrors, setValidationErrors] = useState<{ [key: string]: string[] }>({})
+  const [showPrompt, setShowPrompt] = useState(false)
 
   useEffect(() => {
     const usedFabrics = formData.fabrics.map(f => f.name).filter(Boolean)
@@ -43,9 +41,8 @@ export function FabricDetailsStep({ formData, updateFormData }: FabricDetailsSte
   }, [formData.fabrics])
 
   const handleAddFabric = () => {
-    if (formData.fabrics.length >= FABRICS.length) {
-      toast.error("Maximum fabric limit reached")
-      return
+    if (formData.fabrics.length > 0) {
+      setShowPrompt(true)
     }
 
     const newFabric: FabricDetails = {
@@ -53,11 +50,13 @@ export function FabricDetailsStep({ formData, updateFormData }: FabricDetailsSte
       perPieceRequirement: '',
       unit: 'metre',
       processes: [],
-      color: '',
+      colors: [],
       quantity: '',
-      skippedStages: []
+      skippedStages: [],
+      trims: [],
+      accessories: []
     }
-    
+
     updateFormData({
       fabrics: [...formData.fabrics, newFabric]
     })
@@ -71,33 +70,13 @@ export function FabricDetailsStep({ formData, updateFormData }: FabricDetailsSte
     }
     newFabrics.splice(index, 1)
     updateFormData({ fabrics: newFabrics })
-    
-    // Clear validation errors for removed fabric
-    const newErrors = { ...validationErrors }
-    delete newErrors[`fabric-${index}`]
-    setValidationErrors(newErrors)
   }
 
-  const validateFabric = (fabric: FabricDetails, index: number) => {
-    const validation = validateFabricDetails(fabric)
-    if (!validation.isValid) {
-      setValidationErrors(prev => ({
-        ...prev,
-        [`fabric-${index}`]: validation.errors
-      }))
-    } else {
-      const newErrors = { ...validationErrors }
-      delete newErrors[`fabric-${index}`]
-      setValidationErrors(newErrors)
-    }
-    return validation.isValid
-  }
-
-  const handleFabricChange = (index: number, field: keyof FabricDetails, value: string | string[]) => {
+  const handleFabricChange = (index: number, field: keyof FabricDetails, value: any) => {
     const newFabrics = [...formData.fabrics]
     const oldFabric = newFabrics[index]
 
-    if (field === 'name' && typeof value === 'string') {
+    if (field === 'name') {
       if (oldFabric.name) {
         setAvailableFabrics(prev => [...prev, oldFabric.name].sort())
       }
@@ -106,92 +85,177 @@ export function FabricDetailsStep({ formData, updateFormData }: FabricDetailsSte
 
     newFabrics[index] = { ...oldFabric, [field]: value }
     updateFormData({ fabrics: newFabrics })
+  }
 
-    // Validate the updated fabric
-    validateFabric(newFabrics[index], index)
+  const handleAddColor = (fabricIndex: number) => {
+    const newFabrics = [...formData.fabrics]
+    const fabric = newFabrics[fabricIndex]
+
+    const totalColorQuantity = fabric.colors.reduce(
+      (sum, color) => sum + Number(color.quantity), 0
+    )
+
+    const remainingQuantity = Number(fabric.quantity) - totalColorQuantity
+
+    if (remainingQuantity <= 0) {
+      toast.error("All quantity has been allocated to colors")
+      return
+    }
+
+    fabric.colors.push({
+      color: '',
+      quantity: ''
+    })
+
+    updateFormData({ fabrics: newFabrics })
+  }
+
+  const handleColorChange = (
+    fabricIndex: number,
+    colorIndex: number,
+    field: keyof ColorQuantity,
+    value: string
+  ) => {
+    const newFabrics = [...formData.fabrics]
+    const fabric = newFabrics[fabricIndex]
+
+    if (field === 'quantity') {
+      const otherColorsTotal = fabric.colors.reduce((sum, color, idx) =>
+        idx !== colorIndex ? sum + Number(color.quantity) : sum, 0
+      )
+
+      if (otherColorsTotal + Number(value) > Number(fabric.quantity)) {
+        toast.error("Total color quantities cannot exceed fabric quantity")
+        return
+      }
+    }
+
+    fabric.colors[colorIndex] = {
+      ...fabric.colors[colorIndex],
+      [field]: value
+    }
+
+    updateFormData({ fabrics: newFabrics })
+  }
+
+  const handleRemoveColor = (fabricIndex: number, colorIndex: number) => {
+    const newFabrics = [...formData.fabrics]
+    newFabrics[fabricIndex].colors.splice(colorIndex, 1)
+    updateFormData({ fabrics: newFabrics })
   }
 
   const handleQuantityChange = (index: number, value: string) => {
-    const validation = validateQuantity(
-      value,
-      index,
-      formData.fabrics,
-      formData.totalOrderQuantity
-    )
-
-    if (validation.isValid) {
-      handleFabricChange(index, 'quantity', value)
-    } else {
-      validation.errors.forEach(error => {
-        toast.error(error)
-      })
+    if (Number(value) <= 0) {
+      toast.error("Quantity must be greater than 0")
+      return
     }
-  }
 
-  const renderFabricErrors = (index: number) => {
-    const errors = validationErrors[`fabric-${index}`]
-    if (!errors || errors.length === 0) return null
-
-    return (
-      <div className="mt-2 p-2 bg-red-50 rounded">
-        <ul className="text-sm text-red-600 space-y-1">
-          {errors.map((error, i) => (
-            <li key={i} className="flex items-center">
-              <AlertCircle className="h-4 w-4 mr-1" />
-              {error}
-            </li>
-          ))}
-        </ul>
-      </div>
+    const otherFabricsQty = formData.fabrics.reduce((sum, fabric, i) =>
+      i !== index ? sum + Number(fabric.quantity) : sum, 0
     )
+
+    if (otherFabricsQty + Number(value) > Number(formData.totalOrderQuantity)) {
+      toast.error("Total fabric quantities cannot exceed order quantity")
+      return
+    }
+
+    handleFabricChange(index, 'quantity', value)
   }
+
+  const renderColorSection = (fabricIndex: number) => (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <Label>Colors and Quantities</Label>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => handleAddColor(fabricIndex)}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Color
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        {formData.fabrics[fabricIndex].colors.map((color, colorIndex) => (
+          <div key={colorIndex} className="flex gap-2 items-center">
+            <Input
+              placeholder="Color name"
+              value={color.color}
+              onChange={(e) => handleColorChange(
+                fabricIndex,
+                colorIndex,
+                'color',
+                e.target.value
+              )}
+              className="flex-1"
+            />
+            <Input
+              type="number"
+              placeholder="Quantity"
+              value={color.quantity}
+              onChange={(e) => handleColorChange(
+                fabricIndex,
+                colorIndex,
+                'quantity',
+                e.target.value
+              )}
+              className="w-32"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleRemoveColor(fabricIndex, colorIndex)}
+            >
+              <Trash className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      {formData.fabrics[fabricIndex].quantity && (
+        <div className="text-sm text-muted-foreground">
+          Allocated: {formData.fabrics[fabricIndex].colors.reduce(
+            (sum, color) => sum + Number(color.quantity), 0
+          )} / {formData.fabrics[fabricIndex].quantity}
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <div className="space-y-6">
       {formData.fabrics.map((fabric, index) => (
-        <Card key={index} className="relative">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-2 top-2"
-            onClick={() => handleRemoveFabric(index)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Fabric {index + 1}</CardTitle>
-              {validationErrors[`fabric-${index}`]?.length > 0 && (
-                <Badge variant="destructive">
-                  Has Errors
-                </Badge>
-              )}
+        <Card key={index}>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle>Fabric {index + 1}</CardTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleRemoveFabric(index)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
+            {/* Basic Details */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="flex items-center">
-                  Fabric Name
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <AlertCircle className="h-4 w-4 ml-2 text-gray-400" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Select a fabric from the available options
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </Label>
+              <div>
+                <Label>Fabric Name</Label>
                 <Select
                   value={fabric.name}
                   onValueChange={(value) => handleFabricChange(index, 'name', value)}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select fabric" />
+                    {fabric.name ? (
+                      <SelectValue>{fabric.name}</SelectValue>
+                    ) : (
+                      <SelectValue placeholder="Select fabric" />
+                    )}
                   </SelectTrigger>
                   <SelectContent>
                     {availableFabrics.map((f) => (
@@ -201,30 +265,27 @@ export function FabricDetailsStep({ formData, updateFormData }: FabricDetailsSte
                     ))}
                   </SelectContent>
                 </Select>
+
               </div>
 
-              <div className="space-y-2">
+              <div>
                 <Label>Per Piece Requirement</Label>
                 <Input
                   type="number"
                   min="0.1"
                   step="0.1"
                   value={fabric.perPieceRequirement}
-                  onChange={(e) =>
-                    handleFabricChange(index, 'perPieceRequirement', e.target.value)
-                  }
-                  placeholder="Enter requirement"
+                  onChange={(e) => handleFabricChange(index, 'perPieceRequirement', e.target.value)}
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
+            {/* Unit Selection */}
+            <div>
               <Label>Unit</Label>
               <RadioGroup
                 value={fabric.unit}
-                onValueChange={(value) =>
-                  handleFabricChange(index, 'unit', value as 'metre' | 'kg')
-                }
+                onValueChange={(value) => handleFabricChange(index, 'unit', value as 'metre' | 'kg')}
                 className="flex space-x-4"
               >
                 <div className="flex items-center space-x-2">
@@ -238,9 +299,10 @@ export function FabricDetailsStep({ formData, updateFormData }: FabricDetailsSte
               </RadioGroup>
             </div>
 
-            <div className="space-y-2">
+            {/* Processes */}
+            <div>
               <Label>Processes</Label>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 border rounded-lg p-3 bg-gray-50">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 p-4 border rounded-md">
                 {PROCESSES.map((process) => (
                   <div key={process} className="flex items-center space-x-2">
                     <input
@@ -253,140 +315,101 @@ export function FabricDetailsStep({ formData, updateFormData }: FabricDetailsSte
                           : [...fabric.processes, process]
                         handleFabricChange(index, 'processes', newProcesses)
                       }}
-                      className="rounded border-gray-300 text-primary focus:ring-primary"
+                      className="rounded border-gray-300"
                     />
-                    <Label 
-                      htmlFor={`${process}-${index}`}
-                      className="text-sm cursor-pointer"
-                    >
-                      {process}
-                    </Label>
+                    <Label htmlFor={`${process}-${index}`}>{process}</Label>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Color</Label>
-              <Input
-                type="text"
-                value={fabric.color}
-                onChange={(e) =>
-                  handleFabricChange(index, 'color', e.target.value)
-                }
-                placeholder="Enter color"
-                className="w-full"
-              />
-            </div>
 
-            <div className="space-y-2">
-              <Label className="flex items-center">
-                Quantity
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AlertCircle className="h-4 w-4 ml-2 text-gray-400" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Cannot exceed total order quantity ({formData.totalOrderQuantity})
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </Label>
+                 {/* Total Quantity */}
+                 <div>
+              <Label>Total Quantity</Label>
               <Input
                 type="number"
                 min="1"
                 value={fabric.quantity}
                 onChange={(e) => handleQuantityChange(index, e.target.value)}
-                placeholder="Enter quantity"
-                className={`w-full ${
-                  Number(fabric.quantity) > Number(formData.totalOrderQuantity)
-                    ? 'border-red-500'
-                    : ''
-                }`}
+                className={Number(fabric.quantity) > Number(formData.totalOrderQuantity)
+                  ? 'border-red-500'
+                  : ''
+                }
               />
-              {Number(fabric.quantity) > 0 && (
-                <p className="text-sm text-gray-500">
+              {fabric.quantity && (
+                <p className="text-sm text-muted-foreground mt-1">
                   {((Number(fabric.quantity) / Number(formData.totalOrderQuantity)) * 100).toFixed(1)}% of total order
                 </p>
               )}
             </div>
 
-            {renderFabricErrors(index)}
+            {/* Colors */}
+            {renderColorSection(index)}
 
-            {/* Summary Card */}
-            {fabric.name && (
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                <h4 className="font-medium text-sm mb-2">Fabric Summary</h4>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-gray-600">Total Required:</span>{' '}
-                    {(Number(fabric.perPieceRequirement) * Number(fabric.quantity)).toFixed(2)} {fabric.unit}
+
+
+            {/* Stages to Skip */}
+            <div>
+              <Label>Stages to Skip (Optional)</Label>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 p-4 border rounded-md">
+                {STAGES.map((stage) => (
+                  <div key={stage} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id={`skip-${stage}-${index}`}
+                      checked={fabric.skippedStages.includes(stage)}
+                      onChange={() => {
+                        const newStages = fabric.skippedStages.includes(stage)
+                          ? fabric.skippedStages.filter(s => s !== stage)
+                          : [...fabric.skippedStages, stage]
+                        handleFabricChange(index, 'skippedStages', newStages)
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                    <Label htmlFor={`skip-${stage}-${index}`}>{stage}</Label>
                   </div>
-                  <div>
-                    <span className="text-gray-600">Selected Processes:</span>{' '}
-                    {fabric.processes.length}
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ))}
-
-      <div className="flex justify-center">
-        <Button 
-          onClick={handleAddFabric} 
-          className="w-full max-w-md"
-          disabled={formData.fabrics.length >= FABRICS.length}
-          variant="outline"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add New Fabric
-          {formData.fabrics.length > 0 && (
-            <span className="ml-2 text-sm text-gray-500">
-              ({formData.fabrics.length}/{FABRICS.length})
-            </span>
-          )}
-        </Button>
-      </div>
-
-      {/* Total Quantity Summary */}
-      {formData.fabrics.length > 0 && (
-        <Card className="bg-gray-50">
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="font-medium">Total Quantity Allocated</h3>
-                <p className="text-sm text-gray-600">
-                  {formData.fabrics.reduce((sum, fabric) => sum + Number(fabric.quantity), 0)} of {formData.totalOrderQuantity}
-                </p>
-              </div>
-              <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-primary transition-all duration-300"
-                  style={{
-                    width: `${(formData.fabrics.reduce((sum, fabric) => sum + Number(fabric.quantity), 0) / Number(formData.totalOrderQuantity)) * 100}%`
-                  }}
-                />
+                ))}
               </div>
             </div>
           </CardContent>
         </Card>
-      )}
+      ))}
 
-      {/* Help Text */}
-      {formData.fabrics.length === 0 && (
-        <div className="text-center text-gray-500 py-8">
-          <div className="mb-4">
-            <Plus className="h-8 w-8 mx-auto text-gray-400" />
+      <Button
+        onClick={handleAddFabric}
+        className="w-full"
+        disabled={formData.fabrics.length >= FABRICS.length}
+      >
+        <Plus className="h-4 w-4 mr-2" />
+        Add Fabric
+      </Button>
+
+      {/* Prompt Dialog */}
+      <Dialog open={showPrompt} onOpenChange={setShowPrompt}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Additional Fabric Requirements</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Please provide the following information for the additional fabric:
+            </p>
+            <ul className="list-disc list-inside text-sm space-y-2">
+              <li>Fabric Name</li>
+              <li>Per Piece Requirement</li>
+              <li>Choose Unit (metre/kg)</li>
+              <li>Processes</li>
+              <li>Colors with Quantities</li>
+              <li>Total Quantity</li>
+              <li>Stages to Skip (optional)</li>
+            </ul>
+            <Button onClick={() => setShowPrompt(false)} className="w-full">
+              I Understand
+            </Button>
           </div>
-          <h3 className="font-medium mb-2">No Fabrics Added Yet</h3>
-          <p className="text-sm">
-            Click the button above to start adding fabrics to your production plan
-          </p>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

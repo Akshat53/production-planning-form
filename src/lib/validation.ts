@@ -12,12 +12,8 @@ export const validateBasicInfo = (data: FormData): ValidationResult => {
     errors.push("End date is required")
   }
 
-  if (data.startDate && data.endDate && new Date(data.startDate) > new Date(data.endDate)) {
-    errors.push("Start date cannot be after end date")
-  }
-
   if (!data.productionPerDay) {
-    errors.push("Production per day is required")
+    errors.push("Production per day per machine is required")
   } else if (Number(data.productionPerDay) <= 0) {
     errors.push("Production per day must be greater than 0")
   }
@@ -37,6 +33,7 @@ export const validateBasicInfo = (data: FormData): ValidationResult => {
 export const validateFabricDetails = (fabric: FabricDetails): ValidationResult => {
   const errors: string[] = []
 
+  // Required fields according to project requirements
   if (!fabric.name) {
     errors.push("Fabric name is required")
   }
@@ -48,7 +45,15 @@ export const validateFabricDetails = (fabric: FabricDetails): ValidationResult =
   }
 
   if (!fabric.unit) {
-    errors.push("Unit selection is required")
+    errors.push("Unit selection (metre/kg) is required")
+  }
+
+  if (fabric.processes.length === 0) {
+    errors.push("At least one process must be selected")
+  }
+
+  if (!fabric.colors) {
+    errors.push("Color is required")
   }
 
   if (!fabric.quantity) {
@@ -57,9 +62,8 @@ export const validateFabricDetails = (fabric: FabricDetails): ValidationResult =
     errors.push("Quantity must be greater than 0")
   }
 
-  if (fabric.processes.length === 0) {
-    errors.push("At least one process must be selected")
-  }
+  // Note: Stages to be skipped is optional according to requirements
+  // but if selected, should be valid stages
 
   return {
     isValid: errors.length === 0,
@@ -78,10 +82,6 @@ export const validateFabricsQuantity = (
     errors.push("Sum of all fabric quantities cannot exceed total order quantity")
   }
 
-  if (total < Number(totalOrderQuantity)) {
-    errors.push("Sum of all fabric quantities must equal total order quantity")
-  }
-
   return {
     isValid: errors.length === 0,
     errors
@@ -91,18 +91,20 @@ export const validateFabricsQuantity = (
 export const validateInternationalFabrics = (data: FormData): ValidationResult => {
   const errors: string[] = []
 
+  // According to requirements:
+  // 1. Must specify if international fabric is present
   if (data.hasInternationalFabric === null) {
     errors.push("Please specify if international fabric is present")
   }
 
-  if (data.hasInternationalFabric === true) {
-    if (data.chinaFabrics.length === 0) {
-      errors.push("Please select at least one China fabric")
-    }
+  // 2. If Yes, must select China fabrics from previously selected fabrics
+  if (data.hasInternationalFabric === true && data.chinaFabrics.length === 0) {
+    errors.push("Please select at least one China fabric from your selected fabrics")
+  }
 
-    if (!data.majorFabric) {
-      errors.push("Please select a major fabric")
-    }
+  // 3. Major fabric selection
+  if (!data.majorFabric) {
+    errors.push("Please select a major fabric ('None' or one of your selected fabrics)")
   }
 
   return {
@@ -121,16 +123,16 @@ export const validateStep = (step: number, formData: FormData): ValidationResult
       if (formData.fabrics.length === 0) {
         return {
           isValid: false,
-          errors: ["At least one fabric is required"]
+          errors: ["At least one fabric must be added"]
         }
       }
 
-      // Validate each fabric
+      // Validate each fabric independently
       const fabricErrors: string[] = []
       formData.fabrics.forEach((fabric, index) => {
         const validation = validateFabricDetails(fabric)
         if (!validation.isValid) {
-          validation.errors.forEach(error  => {
+          validation.errors.forEach(error => {
             fabricErrors.push(`Fabric ${index + 1}: ${error}`)
           })
         }
@@ -148,55 +150,40 @@ export const validateStep = (step: number, formData: FormData): ValidationResult
       }
     }
 
-    case 3:
-      return validateInternationalFabrics(formData)
+    case 3: {
+      // International fabric and major fabric selection validation
+      const validation = validateInternationalFabrics(formData)
+      
+      // If No for international fabric, no need for China fabric selection
+      if (!formData.hasInternationalFabric && formData.chinaFabrics.length > 0) {
+        validation.errors.push("China fabrics should not be selected when international fabric is No")
+        validation.isValid = false
+      }
+
+      // Validate that major fabric is from selected fabrics
+      if (formData.majorFabric !== 'none' && 
+          !formData.fabrics.some(f => f.name === formData.majorFabric)) {
+        validation.errors.push("Major fabric must be one of your selected fabrics or 'None'")
+        validation.isValid = false
+      }
+
+      return validation
+    }
 
     default:
       return { isValid: true, errors: [] }
   }
 }
 
-// Helper functions
-export const validateQuantity = (
-  quantity: string,
-  index: number,
-  fabrics: FabricDetails[],
-  totalOrderQuantity: string
+// Helper function to validate dropdown selection
+export const validateFabricSelection = (
+  selectedFabric: string,
+  existingFabrics: string[]
 ): ValidationResult => {
   const errors: string[] = []
-  const qty = Number(quantity)
-  const totalQty = Number(totalOrderQuantity)
-
-  if (qty > totalQty) {
-    errors.push(`Quantity cannot exceed total order quantity (${totalQty})`)
-  }
-
-  const otherQuantitiesSum = fabrics
-    .map(f => Number(f.quantity))
-    .reduce((sum, current, idx) => idx !== index ? sum + current : sum, 0)
-
-  if (qty + otherQuantitiesSum > totalQty) {
-    errors.push('Sum of all fabric quantities cannot exceed total order quantity')
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors
-  }
-}
-
-export const validateDateRange = (startDate: string, endDate: string): ValidationResult => {
-  const errors: string[] = []
-  const start = new Date(startDate)
-  const end = new Date(endDate)
-
-  if (start > end) {
-    errors.push("Start date cannot be after end date")
-  }
-
-  const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-  if (diffDays > 365) {
-    errors.push("Date range cannot exceed one year")
+  
+  if (existingFabrics.includes(selectedFabric)) {
+    errors.push("This fabric has already been selected")
   }
 
   return {

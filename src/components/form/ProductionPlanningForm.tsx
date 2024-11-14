@@ -22,8 +22,8 @@ const initialFormData: FormData = {
   hasInternationalFabric: null,
   chinaFabrics: [],
   majorFabric: '',
-  trims: [],
-  accessories: []
+  trims: '',
+  accessories: ''
 }
 
 export function ProductionPlanningForm() {
